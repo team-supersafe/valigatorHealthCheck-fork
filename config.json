@@ -1,58 +1,4 @@
 {
-  "checksToRun": {
-    "sysctlParams": true,
-    "cpuGovernor": true,
-    "cpuBoost": true,
-    "cpuDriver": true,
-    "cstatesDisabled": true,
-    "amdPstateEpp": true,
-    "isolatedCpus": true,
-    "cpuPowerLimits": true,
-    "fail2ban": true,
-    "swapStatus": true,
-    "packageUpdates": false,
-    "ntpSync": true,
-    "sshConfig": true,
-    "solanaLogrotate": true,
-    "unattendedUpgrades": true,
-    "rebootStatus": true,
-    "nicRingBuffers": false,
-    "ethtoolService": true,
-    "nvmeWear": true,
-    "requiredPackages": true,
-    "grubCmdline": true
-  },
-  "systemChecks": {
-    "cpu": {
-      "governor": "performance",
-      "boost": "enabled",
-      "driver": "amd-pstate-epp"
-    },
-    "memory": {
-      "swapEnabled": false
-    },
-    "security": {
-      "fail2banEnabled": true,
-      "sshRootLogin": "no",
-      "sshPasswordAuth": "no"
-    },
-    "updates": {
-      "maxPendingUpdates": 5,
-      "unattendedUpgrades": false
-    },
-    "time": {
-      "ntpEnabled": true
-    },
-    "logs": {
-      "solanaLogrotate": true
-    },
-    "storage": {
-      "maxNvmeWearPercent": 80
-    },
-    "network": {
-      "excludedNics": []
-    }
-  },
   "sysctlChecks": {
     "TCP Buffer Sizes": {
       "net.ipv4.tcp_rmem": "10240 87380 12582912",
@@ -89,6 +35,47 @@
       "net.core.rmem_default": "134217728",
       "net.core.wmem_max": "134217728",
       "net.core.wmem_default": "134217728"
+    }
+  },
+  "checksToRun": {
+    "sysctlParams": true,
+    "cpuGovernor": true,
+    "cpuBoost": true,
+    "cpuDriver": true,
+    "swapStatus": true,
+    "fail2ban": true,
+    "ntpSync": true,
+    "timezoneUtc": true,
+    "packageUpdates": true,
+    "sshConfig": true,
+    "solanaLogrotate": true,
+    "requiredPackages": true,
+    "unattendedUpgrades": true,
+    "rebootStatus": true,
+    "nicRingBuffers": true,
+    "ethtoolService": true,
+    "cstatesDisabled": true,
+    "amdPstateEpp": true,
+    "isolatedCpus": true,
+    "cpuPowerLimits": true,
+    "nvmeWear": true,
+    "grubCmdline": true
+  },
+  "systemChecks": {
+    "cpu": {
+      "governor": "performance",
+      "boost": "enabled",
+      "driver": "amd-pstate-epp"
+    },
+    "memory": {
+      "swapEnabled": false
+    },
+    "updates": {
+      "maxPendingUpdates": 5,
+      "unattendedUpgrades": false
+    },
+    "storage": {
+      "maxNvmeWearPercent": 80
     }
   }
 }
