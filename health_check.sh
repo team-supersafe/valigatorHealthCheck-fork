@@ -2,19 +2,58 @@
 
 # We don't want to exit immediately on error since we want to run all checks
 
-# Define colors
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;36m' # Changed to cyan (lighter blue)
-NC='\033[0m' # No Color
-
 # Get the directory where the script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Parse command line arguments
 QUIET_MODE=false
 CONFIG_FILE=""
+COLOR_MODE="auto"
+SHOW_HELP=false
+
+setup_colors() {
+  local color_enabled=false
+
+  case "$COLOR_MODE" in
+    always)
+      color_enabled=true
+      ;;
+    never)
+      color_enabled=false
+      ;;
+    auto)
+      if [ -t 1 ]; then
+        color_enabled=true
+      fi
+      ;;
+  esac
+
+  if [ "$color_enabled" = true ]; then
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;36m'
+    NC='\033[0m'
+  else
+    GREEN=''
+    RED=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+  fi
+}
+
+usage() {
+  echo -e "${BLUE}Usage:${NC} $0 [OPTIONS]"
+  echo "Options:"
+  echo "  -q, --quiet             Suppress detailed output, only show final summary"
+  echo "  -c, --config FILE       Use specified config file (default: local_config.json or config.json in script dir)"
+  echo "      --color             Force ANSI color output"
+  echo "      --no-color          Disable ANSI color output"
+  echo "  -h, --help              Display this help message and exit"
+  echo ""
+  echo "Note: Use the config.json file to enable/disable specific checks"
+}
 
 # Parse command line options
 while [[ $# -gt 0 ]]; do
@@ -28,15 +67,17 @@ while [[ $# -gt 0 ]]; do
       CONFIG_FILE="$2"
       shift 2
       ;;
+    --color)
+      COLOR_MODE="always"
+      shift
+      ;;
+    --no-color)
+      COLOR_MODE="never"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [OPTIONS]"
-      echo "Options:"
-      echo "  -q, --quiet             Suppress detailed output, only show final summary"
-      echo "  -c, --config FILE       Use specified config file (default: local_config.json or config.json in script dir)"
-      echo "  -h, --help              Display this help message and exit"
-      echo ""
-      echo "Note: Use the config.json file to enable/disable specific checks"
-      exit 0
+      SHOW_HELP=true
+      shift
       ;;
     *)
       echo "Unknown option: $key"
@@ -45,6 +86,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+setup_colors
+
+if [ "$SHOW_HELP" = true ]; then
+  usage
+  exit 0
+fi
 
 # If no config file specified via -c, check for local_config.json first, then fall back to config.json
 if [ -z "$CONFIG_FILE" ]; then
@@ -75,7 +123,7 @@ fi
 # But save the original stdout first to restore it for the summary
 if [ "$QUIET_MODE" = true ]; then
   exec 3>&1
-  exec 1>/dev/null 2>/dev/null
+  exec 1>/dev/null 2>&3  # Suppress stdout but keep stderr visible
 fi
 
 # Load default configuration values
@@ -120,46 +168,14 @@ load_defaults() {
 get_config() {
   local key="$1"
   local default="$2"
-  
-  # Use grep to extract the specific config value to avoid jq errors
   local jq_result
-  
-  # Handle check enabling/disabling
-  if [[ "$key" == .checksToRun.* ]]; then
-    # Extract the last part of the key (after the last dot)
-    local key_name=${key##*.}
-    jq_result=$(grep -A20 '"checksToRun":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*\([^",}]*\).*/\1/')
-  elif [[ "$key" == .systemChecks.* ]]; then
-    # Extract the last part of the key (after the last dot)
-    local key_name=${key##*.}
-    
-    # Special case for nested objects
-    case "$key" in
-      .systemChecks.cpu.*)
-        jq_result=$(grep -A10 '"cpu":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      .systemChecks.security.*)
-        jq_result=$(grep -A20 '"security":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      .systemChecks.updates.*)
-        jq_result=$(grep -A10 '"updates":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      .systemChecks.memory.*)
-        jq_result=$(grep -A10 '"memory":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      .systemChecks.time.*)
-        jq_result=$(grep -A10 '"time":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      .systemChecks.logs.*)
-        jq_result=$(grep -A10 '"logs":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
-      *)
-        jq_result="" ;;
-    esac
-  else
-    jq_result=""
-  fi
-  
-  # If the value is null or empty, use the default
+
+  # Use jq directly -- it is already verified as installed at startup
+  jq_result=$(jq -r "$key // empty" "$CONFIG_FILE" 2>/dev/null)
+
   if [ -z "$jq_result" ]; then
     echo "$default"
   else
-    # Clean up any trailing commas
-    jq_result=$(echo "$jq_result" | sed 's/,$//')
     echo "$jq_result"
   fi
 }
@@ -207,11 +223,10 @@ load_config() {
   # Load defaults first, then override with config file values
   load_defaults
   
-  # Using grep-based parsing instead of jq to avoid errors
-  # Extract and process categories
-  categories=$(grep -o '"[^"]*":' "$CONFIG_FILE" | grep -v "sysctlChecks\|systemChecks" | sed 's/"//g' | sed 's/://g')
-  
-  for category in $categories; do
+  # Extract and process categories; use mapfile to avoid word-splitting on category names
+  mapfile -t category_list < <(grep -o '"[^"]*":' "$CONFIG_FILE" | grep -v "sysctlChecks\|systemChecks" | sed 's/"//g' | sed 's/://g')
+
+  for category in "${category_list[@]}"; do
     # Get the section for this category
     category_section=$(grep -A30 "\"$category\":" "$CONFIG_FILE" | grep -B30 -m1 "}," | grep -v "},")
     
@@ -656,8 +671,7 @@ check_package_updates() {
   # Detect package manager
   if command -v apt &> /dev/null; then
     pkgmanager="apt"
-    # Ensure package lists are up-to-date but don't update packages
-    apt-get update -qq &> /dev/null
+    # Read from existing package cache -- no update triggered (health check should be read-only)
     update_count=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
   elif command -v dnf &> /dev/null; then
     pkgmanager="dnf"
@@ -667,9 +681,8 @@ check_package_updates() {
     update_count=$(yum check-update --quiet 2>/dev/null | grep -v "^$" | wc -l)
   elif command -v pacman &> /dev/null; then
     pkgmanager="pacman"
-    # Update package database first
-    pacman -Sy &>/dev/null
-    update_count=$(pacman -Qu | wc -l)
+    # Read from existing package cache -- no sync triggered (health check should be read-only)
+    update_count=$(pacman -Qu 2>/dev/null | wc -l)
   elif command -v zypper &> /dev/null; then
     pkgmanager="zypper"
     update_count=$(zypper list-updates 2>/dev/null | grep "|" | grep -v "^+-" | wc -l)
@@ -1951,35 +1964,43 @@ check_grub_cmdline() {
   echo -e "${BLUE}Checking GRUB command line parameters...${NC}"
 
   local grub_file="/etc/default/grub"
+  local grub_dropin_dir="/etc/default/grub.d"
   local issues=0
 
-  # Check if the GRUB config file exists
   if [ ! -f "$grub_file" ]; then
     echo -e "  ${RED}FAIL: GRUB configuration file not found at $grub_file${NC}"
     return 1
   fi
 
-  # Extract the GRUB_CMDLINE_LINUX_DEFAULT line
   local cmdline_default
-  cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
+  cmdline_default=$(
+    for grub_defaults_file in "$grub_file" "$grub_dropin_dir"/*.cfg; do
+      [ -r "$grub_defaults_file" ] || continue
+      # shellcheck disable=SC1090
+      . "$grub_defaults_file"
+    done
+    printf '%s\n' "${GRUB_CMDLINE_LINUX_DEFAULT:-}"
+  )
 
   if [ -z "$cmdline_default" ]; then
-    echo -e "  ${RED}FAIL: GRUB_CMDLINE_LINUX_DEFAULT not found in $grub_file${NC}"
+    echo -e "  ${RED}FAIL: Effective GRUB_CMDLINE_LINUX_DEFAULT not found${NC}"
     return 1
   fi
 
-  # Default required GRUB parameters
   local required_params=(
     "audit=1"
     "audit_backlog_limit=8192"
+    "intel_idle.max_cstate=0"
+    "processor.max_cstate=0"
+    "isolcpus="
+    "irqaffinity="
   )
 
-  # Check each required parameter
   for param in "${required_params[@]}"; do
     if echo "$cmdline_default" | grep -q "$param"; then
-      echo -e "  ${GREEN}PASS: '$param' found in GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+      echo -e "  ${GREEN}PASS: '$param' found in effective GRUB_CMDLINE_LINUX_DEFAULT${NC}"
     else
-      echo -e "  ${RED}FAIL: '$param' missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+      echo -e "  ${RED}FAIL: '$param' missing from effective GRUB_CMDLINE_LINUX_DEFAULT${NC}"
       ((issues++))
     fi
   done
@@ -1989,7 +2010,7 @@ check_grub_cmdline() {
     return 0
   else
     echo -e "  ${RED}FAIL: $issues required GRUB parameter(s) missing${NC}"
-    echo -e "  ${YELLOW}Edit $grub_file and add missing parameters to GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+    echo -e "  ${YELLOW}Edit $grub_file or a late file under $grub_dropin_dir and add missing parameters to GRUB_CMDLINE_LINUX_DEFAULT${NC}"
     echo -e "  ${YELLOW}Then run: sudo update-grub${NC}"
     return 1
   fi
@@ -2027,4 +2048,3 @@ else
   done
   exit 1
 fi
-
